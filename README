@@ -18,7 +18,11 @@ This project is a warm-up exercise for managing multiple processes in a Linux en
     2. Sleeps for 1 second.
     3. Prints `USER PID:<pid> PPID:<ppid> Iteration:<i> after sleeping`.
 
-> *Note:* The `user` program is typically **not** run directly; it is launched by `oss`.
+> *Note:* While `user` is typically **launched by `oss`**, you can test it directly:
+> ```bash
+> ./user 5
+> ```
+> This command will make the user process loop 5 times, showing PID/PPID and sleeping each iteration.
 
 ### 2. OSS Process
 - **Source:** `oss.c`
@@ -33,7 +37,7 @@ This project is a warm-up exercise for managing multiple processes in a Linux en
   - `-t <iter>`: Number of iterations for each `user` process.
 - **Example:**
   ```bash
-  oss -n 5 -s 3 -t 7
+  ./oss -n 5 -s 3 -t 7
   ```
   - Spawns 5 total children, up to 3 at a time, each doing 7 iterations.
 - **Implementation:**
@@ -49,7 +53,7 @@ This project is a warm-up exercise for managing multiple processes in a Linux en
 make
 ```
 - Produces two executables: **`oss`** and **`user`**.
-- Automatically runs [Unity](https://github.com/ThrowTheSwitch/Unity) tests
+- Automatically runs [Unity](https://github.com/ThrowTheSwitch/Unity) tests afterward.
 
 To remove object files, executables, and test binaries:
 ```bash
@@ -67,13 +71,10 @@ make clean
    ```
    - Spawns 5 processes total, 3 at once, each running 7 iterations.
 
-> *Note:* Running `./user <iterations>` directly is mainly for debugging or testing. Typically, `oss` does this for you.
-
 ---
 
 ## Submission Workflow
-1. Ensure all code is **committed** in Git.
-2. Run the submission script:
+Run the submission script:
    ```bash
    ./submit.sh 1
    ```
