@@ -1,8 +1,8 @@
 /*
- "The task of oss is to launch a certain number of user processes with particular parameters.
-  These numbers are determined by its own command line arguments."
- "Your solution will be invoked using the following command:
-  oss [-h] [-n proc] [-s simul] [-t iter]"
+ The task of oss is to launch a certain number of user processes with
+ particular parameters. These numbers are determined by its own command line arguments.
+ Your solution will be invoked using the following command:
+    oss [-h] [-n proc] [-s simul] [-t iter]
 */
 #include <stdio.h>
 #include <stdlib.h>
@@ -11,8 +11,8 @@
 #include <unistd.h>
 
 /*
- "If called with the -h parameter, it should simply output a help message
-  (indicating how it is supposed to be run) and then terminating."
+ If called with the -h parameter, it should simply output a help message
+  (indicating how it is supposed to be run) and then terminating.
 */
 static void print_help(const char *prog)
 {
@@ -80,9 +80,10 @@ int parseOptions(int argc, char *argv[], int *n, int *s, int *t)
 int main(int argc, char *argv[])
 {
     /*
-     "So now that I know what parameters it should run with, what should it do?
-      oss when launched should go into a loop and start doing a fork() and then an exec() call
-      to launch user processes. However, it should only do this up to simul number of times."
+     So now that I know what parameters it should run with, what should it do?
+      -oss when launched should go into a loop
+      -start doing a fork() and then an exec() call to launch user processes
+      -it should only do this up to simul number of times.
     */
     int total_children = 0;
     int max_simul = 0;

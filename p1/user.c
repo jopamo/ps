@@ -1,11 +1,14 @@
 /*
- "The user takes in one command line argument. For example, if you were running it directly you would call it like:
-  ./user 5
+ The user takes in one command line argument. For example, if you were
+ running it directly you would call it like:
+   ./user 5
+
   As it is being called with the number 5, it would do 5 iterations over a loop.
   So what does it do in that loop? Each iteration it will output its PID, its parents PID,
   and what iteration of the loop it is in.
+
   After doing this output, it should do sleep(1), to sleep for one second, and then output:
-  USER PID:6577 PPID:6576 Iteration:3 after sleeping"
+    USER PID:6577 PPID:6576 Iteration:3 after sleeping
 */
 #include <stdio.h>
 #include <stdlib.h>
