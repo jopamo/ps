@@ -14,3 +14,5 @@ a.out
 
 # macOS system file
 .DS_Store
+
+p1/test*
