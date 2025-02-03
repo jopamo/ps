@@ -49,7 +49,7 @@ This project is a warm-up exercise for managing multiple processes in a Linux en
 make
 ```
 - Produces two executables: **`oss`** and **`user`**.
-- Automatically runs [Unity](https://github.com/ThrowTheSwitch/Unity) tests
+- Automatically runs [Unity](https://github.com/ThrowTheSwitch/Unity) tests afterward.
 
 To remove object files, executables, and test binaries:
 ```bash
