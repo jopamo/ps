@@ -1,0 +1,21 @@
+BasedOnStyle: LLVM
+IndentWidth: 4
+UseTab: Never
+BreakBeforeBraces: Linux
+AllowShortIfStatementsOnASingleLine: false
+AllowShortFunctionsOnASingleLine: Empty
+AllowShortBlocksOnASingleLine: false
+AllowShortCaseLabelsOnASingleLine: false
+
+AlignConsecutiveDeclarations: false
+IndentCaseLabels: false
+BinPackArguments: false
+BinPackParameters: false
+SpaceBeforeParens: ControlStatements
+Cpp11BracedListStyle: false
+
+ColumnLimit: 120
+
+SpaceAfterCStyleCast: true
+SpacesInParentheses: false
+PointerAlignment: Right
