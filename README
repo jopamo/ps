@@ -1,26 +1,13 @@
-Paul Moses
-Skeleton multiple processes
+"Your README file should consist, at a minimum, of a description of how to compile and run your project,
+ any outstanding problems that it still has, and any problems you encountered."
 
-DESCRIPTION:
-This is the warm-up project building on previous Linux course knowledge.
-We produce two executables, oss and user.
+BUILD:
+make
 
-REQUIREMENTS (UP TO DAY 3):
-- Makefile that compiles both executables at the same time (all target).
-- oss parses command line with getopt(-h, -n, -s, -t) but does not fork yet.
-- user prints PID and PPID in a loop, sleeping 1 second.
+RUN:
+./p1/oss -h
+./p1/oss -n 1 -t 5
+./p1/user 5
 
-COMPILATION:
-From the ps/ directory, run:
-  make
-
-USAGE:
-1) ./p1/oss -h
-2) ./p1/oss -n <proc> -s <simul> -t <iter>
-3) ./p1/user <iterations>   (test only, as user is not normally run directly)
-
-CLEAN:
-make clean
-
-VERSION CONTROL:
-We use git. The repository includes all source and this README.
+DETAILS:
+Day 5 code shows single fork() and exec() from oss to user, with user printing PID/PPID in a loop.

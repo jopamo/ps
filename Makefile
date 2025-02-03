@@ -1,4 +1,5 @@
-# Skeleton multiple processes
+# "Note you MUST have a makefile that compiles and creates these executables at the same time.
+#  This will require the use of the 'all' command in your makefile to compile multiple executables from the same makefile."
 CC = gcc
 CFLAGS = -Wall -g
 
