@@ -20,7 +20,15 @@ fi
 
 PROJECT_NUM="$1"
 
+if [ ! -d "p${PROJECT_NUM}" ]; then
+	echo "Error: Directory p${PROJECT_NUM} does not exist."
+	exit 1
+fi
+
 git pull
+
+echo "Updating Makefile: setting PROJECT ?= $PROJECT_NUM"
+sed -i "s/^PROJECT ?= .*/PROJECT ?= $PROJECT_NUM/" Makefile
 
 if [ -f "p${PROJECT_NUM}/README" ]; then
 	echo "Overwriting root README with p${PROJECT_NUM}/README..."
