@@ -1,13 +1,14 @@
+# Skeleton multiple processes
 CC = gcc
 CFLAGS = -Wall -g
 
-all: oss user
+all: p1/oss p1/user
 
-oss: oss.c
-	$(CC) $(CFLAGS) -o oss oss.c
+p1/oss: p1/oss.c common/common.c
+	$(CC) $(CFLAGS) -o p1/oss p1/oss.c common/common.c
 
-user: user.c
-	$(CC) $(CFLAGS) -o user user.c
+p1/user: p1/user.c common/common.c
+	$(CC) $(CFLAGS) -o p1/user p1/user.c common/common.c
 
 clean:
-	rm -f oss user *.o
+	rm -f p1/oss p1/user p1/*.o common/*.o

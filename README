@@ -1,15 +1,26 @@
-# Project #1 Skeleton
+Paul Moses
+Skeleton multiple processes
 
-This is a skeleton setup for CMP SCI 4760 Operating Systems Project #1.
+DESCRIPTION:
+This is the warm-up project building on previous Linux course knowledge.
+We produce two executables, oss and user.
 
-FILES:
-- oss.c   (Parent process skeleton)
-- user.c  (Child process skeleton)
-- Makefile
-- README
+REQUIREMENTS (UP TO DAY 3):
+- Makefile that compiles both executables at the same time (all target).
+- oss parses command line with getopt(-h, -n, -s, -t) but does not fork yet.
+- user prints PID and PPID in a loop, sleeping 1 second.
 
-To compile, run:
+COMPILATION:
+From the ps/ directory, run:
   make
 
-To remove executables, run:
-  make clean
+USAGE:
+1) ./p1/oss -h
+2) ./p1/oss -n <proc> -s <simul> -t <iter>
+3) ./p1/user <iterations>   (test only, as user is not normally run directly)
+
+CLEAN:
+make clean
+
+VERSION CONTROL:
+We use git. The repository includes all source and this README.
