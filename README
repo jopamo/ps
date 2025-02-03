@@ -1,0 +1,15 @@
+# Project #1 Skeleton
+
+This is a skeleton setup for CMP SCI 4760 Operating Systems Project #1.
+
+FILES:
+- oss.c   (Parent process skeleton)
+- user.c  (Child process skeleton)
+- Makefile
+- README
+
+To compile, run:
+  make
+
+To remove executables, run:
+  make clean

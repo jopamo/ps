@@ -1,0 +1,16 @@
+# Ignore object files (e.g., *.o)
+*.o
+
+# Ignore compiled executables
+oss
+user
+a.out
+
+# Ignore editor swap/backup files
+*.swp
+*.swo
+*~
+*.bak
+
+# macOS system file
+.DS_Store
