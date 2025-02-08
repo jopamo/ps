@@ -17,6 +17,27 @@
 static void print_help(const char *prog)
 {
     printf("Usage: %s [-h] [-n proc] [-s simul] [-t iter]\n", prog);
+    printf("Your solution will be invoked using the following command:\n");
+    printf("    %s [-h] [-n proc] [-s simul] [-t iter]\n", prog);
+    printf("\nExample:\n");
+    printf("    %s -n 5 -s 2 -t 3\n\n", prog);
+    printf("If called with the -h parameter, it will show this help message and then terminate.\n");
+}
+
+static int parse_int_arg(const char *prog, const char *arg, char opt_char, int *dest)
+{
+    if (!arg || arg[0] == '-') {
+        fprintf(stderr, "Missing integer after -%c\n", opt_char);
+        fprintf(stderr, "Try '%s -h' for usage.\n", prog);
+        return -1;
+    }
+    *dest = atoi(arg);
+    if (*dest <= 0) {
+        fprintf(stderr, "Invalid value for -%c (must be > 0)\n", opt_char);
+        fprintf(stderr, "Try '%s -h' for usage.\n", prog);
+        return -1;
+    }
+    return 0;
 }
 
 int parseOptions(int argc, char *argv[], int *n, int *s, int *t)
@@ -30,46 +51,30 @@ int parseOptions(int argc, char *argv[], int *n, int *s, int *t)
             print_help(argv[0]);
             return 1;
         case 'n':
-            if (!optarg || optarg[0] == '-') {
-                fprintf(stderr, "Missing integer after -n\n");
-                return -1;
-            }
-            *n = atoi(optarg);
-            if (*n <= 0) {
-                fprintf(stderr, "Invalid value for -n (must be > 0)\n");
+            if (parse_int_arg(argv[0], optarg, 'n', n) == -1) {
                 return -1;
             }
             break;
         case 's':
-            if (!optarg || optarg[0] == '-') {
-                fprintf(stderr, "Missing integer after -s\n");
-                return -1;
-            }
-            *s = atoi(optarg);
-            if (*s <= 0) {
-                fprintf(stderr, "Invalid value for -s (must be > 0)\n");
+            if (parse_int_arg(argv[0], optarg, 's', s) == -1) {
                 return -1;
             }
             break;
         case 't':
-            if (!optarg || optarg[0] == '-') {
-                fprintf(stderr, "Missing integer after -t\n");
-                return -1;
-            }
-            *t = atoi(optarg);
-            if (*t <= 0) {
-                fprintf(stderr, "Invalid value for -t (must be > 0)\n");
+            if (parse_int_arg(argv[0], optarg, 't', t) == -1) {
                 return -1;
             }
             break;
         default:
-            fprintf(stderr, "Unknown option: %c\n", optopt ? optopt : '-');
+            fprintf(stderr, "Unknown option: -%c\n", optopt);
+            fprintf(stderr, "Try '%s -h' for usage.\n", argv[0]);
             return -1;
         }
     }
 
     if (optind < argc) {
         fprintf(stderr, "Extra non-option argument: %s\n", argv[optind]);
+        fprintf(stderr, "Try '%s -h' for usage.\n", argv[0]);
         return -1;
     }
 
@@ -94,7 +99,8 @@ int main(int argc, char *argv[])
     }
 
     if (total_children <= 0 || max_simul <= 0 || iterations <= 0) {
-        fprintf(stderr, "Error: -n, -s, -t must all be > 0\n");
+        fprintf(stderr, "Error: -n, -s, -t must all be > 0.\n");
+        fprintf(stderr, "Try '%s -h' for usage.\n", argv[0]);
         return 1;
     }
 
