@@ -1,11 +1,15 @@
 BasedOnStyle: LLVM
-IndentWidth: 4
+IndentWidth: 2
 UseTab: Never
-BreakBeforeBraces: Linux
-AllowShortIfStatementsOnASingleLine: false
-AllowShortFunctionsOnASingleLine: Empty
-AllowShortBlocksOnASingleLine: false
-AllowShortCaseLabelsOnASingleLine: false
+BreakBeforeBraces: Stroustrup
+AllowShortIfStatementsOnASingleLine: AllIfsAndElse
+AllowShortFunctionsOnASingleLine: All
+AllowShortBlocksOnASingleLine: Always
+AllowShortCaseLabelsOnASingleLine: true
+AllowShortCompoundRequirementOnASingleLine: true
+AllowShortEnumsOnASingleLine: true
+AllowShortLambdasOnASingleLine: All
+AllowShortLoopsOnASingleLine: true
 
 AlignConsecutiveDeclarations: false
 IndentCaseLabels: false
@@ -19,3 +23,7 @@ ColumnLimit: 120
 SpaceAfterCStyleCast: true
 SpacesInParentheses: false
 PointerAlignment: Right
+
+AllowAllParametersOfDeclarationOnNextLine: false
+MaxEmptyLinesToKeep: 1
+CommentPragmas: "^\\s*(TODO|FIXME|XXX):"
