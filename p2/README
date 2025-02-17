@@ -1,0 +1,85 @@
+# Project 2: Simulated System Clock and Process Management
+
+## Overview
+This project enhances the previous project by adding a simulated system clock and managing multiple worker processes based on this clock. The main objective is to launch worker processes (`user` processes) from `oss` and control their execution based on the simulated clock.
+
+---
+
+## Requirements
+
+### 1. User Process (Worker)
+- **Source:** `user.c`
+- **Executable:** `user`
+- **Behavior:**
+  - Accepts two command-line arguments: maximum time to stay in the system (in seconds and nanoseconds).
+  - The worker process attaches to shared memory and examines the simulated system clock.
+  - It calculates its target termination time based on the current system clock and the time passed as arguments.
+  - The worker continuously checks the clock and terminates once its target time is reached, outputting:
+    - **Starting Message:** `WORKER PID:<pid> PPID:<ppid> SysClockS:<current_seconds> SysClockNano:<current_nanoseconds> TermTimeS:<target_seconds> TermTimeNano:<target_nanoseconds> --Just Starting`
+    - **Periodic Updates:** Every time the seconds or nanoseconds change, it outputs a message like:
+      `WORKER PID:<pid> PPID:<ppid> SysClockS:<current_seconds> SysClockNano:<current_nanoseconds> TermTimeS:<target_seconds> TermTimeNano:<target_nanoseconds> --<elapsed_time> seconds have passed since starting`
+    - **Termination Message:** When the worker finishes:
+      `WORKER PID:<pid> PPID:<ppid> SysClockS:<current_seconds> SysClockNano:<current_nanoseconds> TermTimeS:<target_seconds> TermTimeNano:<target_nanoseconds> --Terminating`
+
+> *Note:* While `user` is typically **launched by `oss`**, you can test it directly:
+> ```bash
+> ./user 5 500000
+> ```
+> This will start the worker process and it will check the system clock to terminate after 5 seconds and 500,000 nanoseconds.
+
+### 2. OSS Process
+- **Source:** `oss.c`
+- **Executable:** `oss`
+- **Usage:**
+  ```bash
+  oss [-h] [-n <proc>] [-s <simul>] [-t <iter>] [-i <interval>]
+  ```
+  - `-h`: Prints help and exits.
+  - `-n <proc>`: Total number of `user` processes to create.
+  - `-s <simul>`: Maximum number of `user` processes to run at once.
+  - `-t <iter>`: Number of iterations for each `user` process.
+  - `-i <interval>`: Time interval in milliseconds between launching each child process.
+- **Example:**
+  ```bash
+  ./oss -n 5 -s 3 -t 7 -i 100
+  ```
+  - Spawns 5 total children, up to 3 at a time, each doing 7 iterations, launching one every 100 milliseconds.
+- **Implementation:**
+  - Uses `fork()`/`exec()` to start each `user`.
+  - Tracks the simulated system clock and periodically checks if any child has finished before launching new ones.
+  - Ensures that no more than `-s` processes run concurrently, and waits for processes to terminate using non-blocking `wait()`.
+
+---
+
+## Building and Running
+
+### Compilation
+```bash
+make
+```
+- Produces two executables: **`oss`** and **`user`**.
+
+To remove object files, executables, and test binaries:
+```bash
+make clean
+```
+
+### Usage Examples
+1. **Help/Usage**
+   ```bash
+   ./oss -h
+   ```
+2. **Launching Processes**
+   ```bash
+   ./oss -n 5 -s 3 -t 7 -i 100
+   ```
+   - Spawns 5 processes total, 3 at once, each running 7 iterations, with a 100ms interval between launches.
+
+---
+
+## Submission Workflow
+Run the submission script:
+   ```bash
+   ./submit.sh 1
+   ```
+> *Note:* This script automatically satisfies **all** submission requirements.

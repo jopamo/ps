@@ -1,6 +1,6 @@
 # Makefile
 
-PROJECT ?= 1
+PROJECT ?= 2
 
 .PHONY: all build_project clean
 
