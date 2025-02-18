@@ -1,5 +1,5 @@
 /*
-worker, the children
+worker
 
 The worker takes in two command line arguments, this time corresponding to the maximum
 time it should decide to stay around in the system. For example, if you were running it
@@ -52,12 +52,12 @@ API for Shared Memory Operations:
         segment with the given key and size. Exits on failure.
 
         attach_shared_memory_rw(int shmid) - Attaches the shared memory segment (specified
-by shmid) with read/write access. Returns a pointer to the attached memory. Mutex
+        by shmid) with read/write access. Returns a pointer to the attached memory. Mutex
         protection is applied for thread-safety. Exits on failure.
 
         attach_shared_memory_ro(int shmid) - Attaches the shared memory segment (specified
-by shmid) with read-only access. Returns a pointer to the attached memory. Mutex
-protection is applied for thread-safety. Exits on failure.
+        by shmid) with read-only access. Returns a pointer to the attached memory. Mutex
+        protection is applied for thread-safety. Exits on failure.
 
         detach_shared_memory(void* addr) - Detaches the shared memory segment at the given
         address. Mutex protection is applied. Exits on failure.
@@ -73,46 +73,63 @@ protection is applied for thread-safety. Exits on failure.
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/time.h>
+#include <sys/types.h>
 #include <unistd.h>
 
 #include "shared.h"
 
 int main( int argc, char *argv[] ) {
-  (void)argc;
-  (void)argv;
+  if ( argc != 3 ) {
+    fprintf( stderr, "Usage: %s <termination_time_sec> <termination_time_ns>\n", argv[0] );
+    exit( EXIT_FAILURE );
+  }
 
   // Initialize shared memory and semaphore system
   init_shared_memory_system();
 
-  // Step 1: Attach to the shared memory for the system clock with read-only access
+  // Parse command-line arguments for termination time
+  int termination_sec = atoi( argv[1] );
+  int termination_ns  = atoi( argv[2] );
+
+  // Attach to the shared memory for the system clock with read-only access
   int shmid = create_shared_memory( SHM_KEY, sizeof( struct SysClock ) );
 
   // Attach to shared memory with read-only access (can't modify shared memory)
   const struct SysClock *clock = (const struct SysClock *)attach_shared_memory_ro( shmid );
 
-  // Step 2: Wait until the system clock reaches a certain point - 5sec
-  while ( clock->sec < 5 ) {
-#if SHM_DEBUG
-    char log_msg[256];
-    snprintf( log_msg, sizeof( log_msg ), "Worker PID: %d SysClockS: %d SysClockNano: %d -- Just starting", getpid(),
-              clock->sec, clock->nano );
-    debug_log( log_msg );
-#else
-    printf( "Worker PID: %d SysClockS: %d SysClockNano: %d -- Just starting\n", getpid(), clock->sec, clock->nano );
-#endif
-    sleep( 1 );
+  // Calculate the target termination time
+  int target_sec = clock->sec + termination_sec;
+  int target_ns  = clock->nano + termination_ns;
+
+  if ( target_ns >= 1000000000 ) {
+    target_ns -= 1000000000;  // Carry over the nanoseconds to seconds
+    target_sec += 1;
   }
 
-// Step 3: Worker exits after 5 seconds
-#if SHM_DEBUG
-  snprintf( log_msg, sizeof( log_msg ), "Worker PID: %d SysClockS: %d SysClockNano: %d -- Terminating", getpid(),
-            clock->sec, clock->nano );
-  debug_log( log_msg );
-#else
-  printf( "Worker PID: %d SysClockS: %d SysClockNano: %d -- Terminating\n", getpid(), clock->sec, clock->nano );
-#endif
+  // Output the initial worker information
+  printf( "WORKER PID:%d PPID:%d SysClockS:%d SysClockNano:%d TermTimeS:%d TermTimeNano:%d\n", getpid(), getppid(),
+          clock->sec, clock->nano, target_sec, target_ns );
+  printf( "--Just Starting\n" );
 
-  // Step 4: Detach shared memory
+  // Check the system clock until the worker should terminate
+  int seconds_passed = 0;
+  while ( clock->sec < target_sec || ( clock->sec == target_sec && clock->nano < target_ns ) ) {
+    // Check if the seconds have changed and output periodic updates
+    if ( clock->sec > seconds_passed ) {
+      printf( "WORKER PID:%d PPID:%d SysClockS:%d SysClockNano:%d TermTimeS:%d TermTimeNano:%d\n", getpid(), getppid(),
+              clock->sec, clock->nano, target_sec, target_ns );
+      printf( "--%d seconds have passed since starting\n", clock->sec );
+      seconds_passed = clock->sec;
+    }
+  }
+
+  // Output final message when the worker terminates
+  printf( "WORKER PID:%d PPID:%d SysClockS:%d SysClockNano:%d TermTimeS:%d TermTimeNano:%d\n", getpid(), getppid(),
+          clock->sec, clock->nano, target_sec, target_ns );
+  printf( "--Terminating\n" );
+
+  // Detach shared memory
   detach_shared_memory( (void *)clock );
 
   // Clean up shared memory and semaphore system
