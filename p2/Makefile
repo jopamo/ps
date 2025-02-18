@@ -1,59 +1,59 @@
-# p1/Makefile
-
+# SHELL and compiler detection
 SHELL = /bin/bash
 
+# Check for clang, otherwise fallback to gcc
 ifneq ($(shell which clang 2>/dev/null),)
   CC = clang
   CFLAGS = -Wall -Wextra -Werror -Wshadow -Wconversion -pedantic -O1 -g \
-           -fsanitize=address,undefined -fno-omit-frame-pointer -I../tests
+           -fsanitize=address,undefined -fno-omit-frame-pointer -I./p2
 else
   CC = gcc
-  CFLAGS = -Wall -g -I../tests
+  CFLAGS = -Wall -g -I./p2
 endif
 
-TESTSDIR  = ../tests
+# Source files
+OSS_SRC = oss.c clock.c   # OSS files: oss.c (main), clock.c (helpers)
+WORKER_SRC = worker.c     # Worker files: worker.c
+BOTH_SRC = shared.c       # Shared functionality
 
-OSS_SRC   = oss.c
-USER_SRC  = user.c
-OSS_EXE   = ../oss
-USER_EXE  = ../user
+# Object files
+OSS_OBJ = oss.o clock.o   # Object files for OSS (oss.o, clock.o)
+WORKER_OBJ = worker.o     # Object files for Worker (worker.o)
+BOTH_OBJ = shared.o       # Object file for shared.c (shared.o)
 
-OSS_OBJ   = oss.o
-USER_OBJ  = user.o
+# Executables
+OSS_EXE = ../oss
+WORKER_EXE = ../worker
 
-TEST_SRC  = $(TESTSDIR)/test_p2.c
-UNITY_SRC = $(TESTSDIR)/unity.c
-TEST_OBJ  = test_p1.o
-TEST_EXE  = test_p1
+# Default target
+all: $(OSS_EXE) $(WORKER_EXE)
 
-all: $(OSS_EXE) $(USER_EXE) optional_test
+# Compile OSS source files into object files
+oss.o: oss.c
+	$(CC) $(CFLAGS) -c $< -o $@
 
-$(OSS_OBJ): $(OSS_SRC)
-	$(CC) $(CFLAGS) -DTESTING -c $(OSS_SRC) -o $@
+clock.o: clock.c
+	$(CC) $(CFLAGS) -c $< -o $@
 
-$(USER_OBJ): $(USER_SRC)
-	$(CC) $(CFLAGS) -DTESTING -c $(USER_SRC) -o $@
+# Compile Worker source files into object files
+$(WORKER_OBJ): worker.c
+	$(CC) $(CFLAGS) -c $^ -o $@
 
-$(OSS_EXE): $(OSS_SRC)
-	$(CC) $(CFLAGS) -o $(OSS_EXE) $(OSS_SRC)
+# Compile shared source files (used by both)
+$(BOTH_OBJ): shared.c
+	$(CC) $(CFLAGS) -c $< -o $@
 
-$(USER_EXE): $(USER_SRC)
-	$(CC) $(CFLAGS) -o $(USER_EXE) $(USER_SRC)
+# Link OSS object files and shared objects into final executable
+$(OSS_EXE): $(OSS_OBJ) $(BOTH_OBJ)
+	$(CC) $(CFLAGS) -o $(OSS_EXE) $(OSS_OBJ) $(BOTH_OBJ)
 
-optional_test:
-ifneq ("$(wildcard $(TEST_SRC))$(wildcard $(UNITY_SRC))","")
-	$(MAKE) $(TEST_EXE)
-	@echo "Running $(TEST_EXE):"
-	@./$(TEST_EXE)
-else
-	@echo "No test files found; skipping $(TEST_EXE)."
-endif
+# Link Worker object files and shared objects into final executable
+$(WORKER_EXE): $(WORKER_OBJ) $(BOTH_OBJ)
+	$(CC) $(CFLAGS) -o $(WORKER_EXE) $(WORKER_OBJ) $(BOTH_OBJ)
 
-$(TEST_EXE): $(TEST_OBJ) $(OSS_OBJ) $(USER_OBJ) $(UNITY_SRC)
-	$(CC) $(CFLAGS) -o $(TEST_EXE) $(TEST_OBJ) $(UNITY_SRC) $(OSS_OBJ) $(USER_OBJ)
-
-$(TEST_OBJ): $(TEST_SRC)
-	$(CC) $(CFLAGS) -DTESTING -c $(TEST_SRC) -o $(TEST_OBJ)
-
+# Clean up generated files (object files and executables)
 clean:
-	rm -f $(OSS_EXE) $(USER_EXE) $(TEST_EXE) *.o
+	rm -f $(OSS_EXE) $(WORKER_EXE) *.o
+
+# Phony target for cleaning
+.PHONY: clean
