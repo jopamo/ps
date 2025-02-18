@@ -5,10 +5,10 @@
 
 #include "shared.h"
 
-// Tweakable value for clock increments (in nanoseconds)
-#define TICK_INTERVAL 100000000  // 100ms (100,000,000 nanoseconds)
+#define TIME_UNIT 1000
+#define SPEED_FACTOR 1.1  // Speed factor (1 = normal, >1 = faster, <1 = slower)
 
-void increment_clock( struct SysClock *sys_clock );
+void increment_clock( struct SysClock *sys_clock, long long tick_interval );
 void initialize_clock( struct SysClock *sys_clock );
 void start_clock_loop( struct SysClock *sys_clock );
 
