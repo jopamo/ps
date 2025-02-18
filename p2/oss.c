@@ -169,26 +169,25 @@ API for Clock Operations(clock.c):
 #include "clock.h"
 #include "shared.h"
 
-int main(int argc, char *argv[])
-{
-  (void) argc;
-  (void) argv;
+int main( int argc, char *argv[] ) {
+  (void)argc;
+  (void)argv;
 
   // Initialize shared memory and semaphore system
   init_shared_memory_system();
 
   // Create and attach to the shared memory segment for SysClock
-  int shmid = create_shared_memory(SHM_KEY, sizeof(struct SysClock));
-  struct SysClock *sys_clock = (struct SysClock *) attach_shared_memory_rw(shmid);
+  int shmid                  = create_shared_memory( SHM_KEY, sizeof( struct SysClock ) );
+  struct SysClock *sys_clock = (struct SysClock *)attach_shared_memory_rw( shmid );
 
   // Initialize the clock
-  initialize_clock(sys_clock);
+  initialize_clock( sys_clock );
 
   // Start the clock increment loop
-  start_clock_loop(sys_clock);
+  start_clock_loop( sys_clock );
 
   // Detach shared memory once done
-  detach_shared_memory(sys_clock);
+  detach_shared_memory( sys_clock );
 
   // Clean up shared memory and semaphore system
   cleanup_shared_memory_system();

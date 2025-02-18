@@ -71,63 +71,49 @@ protection is applied for thread-safety. Exits on failure.
 
 // worker.c
 
-#include "shared.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
 
-int main(int argc, char *argv[])
-{
-  (void) argc;
-  (void) argv;
+#include "shared.h"
+
+int main( int argc, char *argv[] ) {
+  (void)argc;
+  (void)argv;
 
   // Initialize shared memory and semaphore system
   init_shared_memory_system();
 
   // Step 1: Attach to the shared memory for the system clock with read-only access
-  int shmid = create_shared_memory(SHM_KEY, sizeof(struct SysClock));
+  int shmid = create_shared_memory( SHM_KEY, sizeof( struct SysClock ) );
 
   // Attach to shared memory with read-only access (can't modify shared memory)
-  const struct SysClock *clock = (const struct SysClock *) attach_shared_memory_ro(shmid);
+  const struct SysClock *clock = (const struct SysClock *)attach_shared_memory_ro( shmid );
 
   // Step 2: Wait until the system clock reaches a certain point - 5sec
-  while (clock->sec < 5) {
+  while ( clock->sec < 5 ) {
 #if SHM_DEBUG
     char log_msg[256];
-    snprintf(log_msg,
-             sizeof(log_msg),
-             "Worker PID: %d SysClockS: %d SysClockNano: %d -- Just starting",
-             getpid(),
-             clock->sec,
-             clock->nano);
-    debug_log(log_msg);
+    snprintf( log_msg, sizeof( log_msg ), "Worker PID: %d SysClockS: %d SysClockNano: %d -- Just starting", getpid(),
+              clock->sec, clock->nano );
+    debug_log( log_msg );
 #else
-    printf("Worker PID: %d SysClockS: %d SysClockNano: %d -- Just starting\n",
-           getpid(),
-           clock->sec,
-           clock->nano);
+    printf( "Worker PID: %d SysClockS: %d SysClockNano: %d -- Just starting\n", getpid(), clock->sec, clock->nano );
 #endif
-    sleep(1);
+    sleep( 1 );
   }
 
 // Step 3: Worker exits after 5 seconds
 #if SHM_DEBUG
-  snprintf(log_msg,
-           sizeof(log_msg),
-           "Worker PID: %d SysClockS: %d SysClockNano: %d -- Terminating",
-           getpid(),
-           clock->sec,
-           clock->nano);
-  debug_log(log_msg);
+  snprintf( log_msg, sizeof( log_msg ), "Worker PID: %d SysClockS: %d SysClockNano: %d -- Terminating", getpid(),
+            clock->sec, clock->nano );
+  debug_log( log_msg );
 #else
-  printf("Worker PID: %d SysClockS: %d SysClockNano: %d -- Terminating\n",
-         getpid(),
-         clock->sec,
-         clock->nano);
+  printf( "Worker PID: %d SysClockS: %d SysClockNano: %d -- Terminating\n", getpid(), clock->sec, clock->nano );
 #endif
 
   // Step 4: Detach shared memory
-  detach_shared_memory((void *) clock);
+  detach_shared_memory( (void *)clock );
 
   // Clean up shared memory and semaphore system
   cleanup_shared_memory_system();

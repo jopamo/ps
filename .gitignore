@@ -5,6 +5,7 @@
 oss
 user
 a.out
+worker
 
 # Ignore editor swap/backup files
 *.swp
