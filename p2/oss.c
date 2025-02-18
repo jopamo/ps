@@ -1,127 +1,96 @@
 /*
 oss.c
 
-worker.c should be launched as a seprate program
-./worker 5 500000
+**Adding Functionality to Our System**
 
-Task:
-As in the previous project, you will have two executables, oss and worker. The oss
-executable will be launching workers, who stick around for a bit. However, we have a few
-more details, the most important of which is that our processes stick around based on a
-simulated clock that we create, NOT system time. IMPORTANT: Your code should not call
-sleep or usleep or any related function that waits based on some amount of system time.
+**Purpose**:
+This project builds upon the previous one by introducing additional functionality for future projects, specifically the
+creation of a simulated system clock for managing process life cycles, rather than relying on system time.
 
-Our main executable (oss) will now be maintaining a "simulated system clock" in shared
-memory. This system clock is not tied to the main clock of the system, but instead done
-separately. The clock consists of two separate integers (one storing seconds, the other
-nanoseconds) in shared memory, both of which are initialized to zero. This system clock
-must be accessible by the children, so it is required to be in shared memory. The children
-will not be modifying this clock for this assignment, but they will need to look at it.
+**Task**:
+There are two executables: `oss` (parent) and `worker` (child). The key difference from the previous project is that the
+processes will run based on a custom clock, not system time. You must avoid using functions like `sleep` or `usleep`
+that rely on system time.
 
-In addition to this, oss will also maintain a process table (consisting of Process Control
-Blocks, one for each process). This process table does not need to be in shared memory.
-The first thing it should keep track of is the PID of the child process, as well as the
-time right before oss does a fork to launch that child process (based on our own simulated
-clock). It should also contain an entry for if this entry in the process table is empty
-(i.e., not being used).
+- **Simulated System Clock**:
+  `oss` maintains a simulated clock in shared memory, consisting of two integers: one for seconds and the other for
+nanoseconds. This clock starts at zero and is accessible to children, though they won't modify it.
 
-I suggest making your process table an array of structs of PCBs, for example:
+- **Process Table**:
+  `oss` maintains a process table that tracks each child process using Process Control Blocks (PCBs). The table stores
+the child's PID, the start time (from the simulated clock), and whether the entry is in use. The table has a fixed size
+and reuses entries when a child process terminates.
 
-struct PCB {
-    int occupied;     // either true or false
-    pid_t pid;        // process id of this child
-    int startSeconds; // time when it was forked
-    int startNano;    // time when it was forked
-};
+  Example structure for PCB:
+  ```c
+  struct PCB {
+    int occupied; // true or false
+    pid_t pid;    // process id
+    int startSeconds; // start time in seconds
+    int startNano;    // start time in nanoseconds
+  };
+  struct PCB processTable[20];
+  ```
 
-struct PCB processTable[20];
+- **Worker (Child Process)**:
+  The worker process accepts two command-line arguments indicating the maximum time it should stay active in the system.
+It attaches to the shared memory, checks the simulated clock, and calculates when it should terminate. The worker
+constantly monitors the clock to decide when to exit, outputting periodic status updates.
 
-Note that your process table is limited in size and so should reuse old entries. That is,
-if the process occupying entry 0 finishes, then the next time you go to launch a process,
-it should go in that spot. When oss detects that a process has terminated, it can clear
-out that entry and set its occupied to 0, indicating that it is now a free slot.
+  Example worker execution:
+  ```
+  ./worker 5 500000
+  ```
 
-The task of oss is to launch a certain number of worker processes with particular
-parameters. These numbers are determined by its own command line arguments.
+  Example of worker output:
+  ```
+  WORKER PID:6577 PPID:6576 SysClockS: 5 SysClockNano: 500000000 TermTimeS: 11 TermTimeNano: 800000000 -- Just Starting
+  WORKER PID:6577 PPID:6576 SysClockS: 6 SysClockNano: 900000000 TermTimeS: 11 TermTimeNano: 800000000 -- 1 second
+passed
+  ...
+  WORKER PID:6577 PPID:6576 SysClockS: 11 SysClockNano: 800000000 TermTimeS: 11 TermTimeNano: 800000000 -- Terminating
+  ```
 
-Your solution will be invoked using the following command:
+- **oss (Parent Process)**:
+  The `oss` executable manages launching multiple worker processes based on the command line arguments. It is
+responsible for initializing the system clock, launching workers, and updating the process table. The `oss` process does
+not use `wait()` calls but increments the clock and checks for terminated children periodically.
 
-oss [-h] [-n proc] [-s simul] [-t timelimitForChildren] [-i intervalInMsToLaunchChildren]
+  Command to run `oss`:
+  ```
+  oss [-h] [-n proc] [-s simul] [-t timelimitForChildren] [-i intervalInMsToLaunchChildren]
+  ```
 
-While the first two parameters are similar to the previous project, the -t parameter is
-different. It now stands for the upper bound of time that a child process will be launched
-for. So for example, if it is called with -t 7, then when calling worker processes, it
-should call them with a time interval randomly between 1 second and 7 seconds (with
-nanoseconds also random).
+  - `-n proc`: Number of child processes.
+  - `-s simul`: Simulation parameter.
+  - `-t timelimitForChildren`: The upper bound time for each worker (in seconds).
+  - `-i intervalInMsToLaunchChildren`: Interval in milliseconds between child launches.
 
-The -i parameter is new. This specifies how often you should launch a child (based on the
-system clock). For example, if -i 100 is passed, then your system would launch a child no
-more than once every 100 milliseconds. This is set to allow user processes to slowly go
-into the system, rather than flooding in initially.
+  The `oss` process runs in a loop, incrementing the clock and checking for terminated children using non-blocking
+`waitpid()`. It will output the process table every half second, showing the current clock and the state of each child
+process.
 
-When started, oss will initialize the system clock and then go into a loop and start doing
-a fork() and then an exec() call to launch worker processes. However, it should only do
-this up to simul number of times. So if called with a -s of 3, we would launch no more
-than 3 initially. oss should make sure to update the process table with information as it
-is launching user processes.
+  Example of output:
+  ```
+  OSS PID:6576 SysClockS: 7 SysClockNano: 500000
+  Process Table:
+  Entry Occupied PID StartS StartN
+  0 1 6577 5 500000
+  ...
+  ```
 
-This seems close to what we did before, however, will not be doing wait() calls as before.
-Instead, oss() will be going into a loop, incrementing the clock and then constantly
-checking to see if a child has terminated. Rough pseudocode for this loop is below:
+- **Clock Management**:
+  Each time `oss` increments the clock, it attempts to keep it roughly in sync with the real-time clock. The increment
+is adjusted dynamically based on the speed of the internal clock. Although race conditions may occur when child
+processes examine the clock, it is not a significant issue for this project.
 
-while (stillChildrenToLaunch) {
-    incrementClock();
-    // Every half a second of simulated clock time, output the process table to the screen
-    checkIfChildHasTerminated();
-    if (childHasTerminated) {
-        updatePCBOfTerminatedChild;
-    }
-    possiblyLaunchNewChild(obeying process limits and time bound limits);
-}
+- **Signal Handling**:
+  The program should terminate after 60 real-life seconds by sending a timeout signal. Upon termination, it must kill
+all running children and clean up shared memory. The program should also handle `Ctrl-C` to properly clean up and
+terminate.
 
-The check to see if a child has terminated should be done with a nonblocking wait() call.
-This can be done with code along the lines of:
-
-    int pid = waitpid(-1, &status, WNOHANG);
-
-waitpid will return 0 if no child processes have terminated and will return the pid of the
-child if one has terminated.
-
-The output of oss should consist of, every half a second in our simulated system,
-outputting the entire process table in a nice format. For example:
-
-OSS PID:6576 SysClockS: 7 SysClockNano: 500000
-Process Table:
-Entry  Occupied  PID   StartS  StartN
-0      1         6577  5       500000
-1      0         0     0       0
-2      0         0     0       0
-...
-19     0         0     0       0
-
-Incrementing the clock:
-Each iteration in oss you need to increment the clock. So how much should you increment
-it? You should attempt to very loosely have your internal clock be similar to the real
-clock. This does not have to be precise and does not need to be checked, just use it as a
-crude guideline. So if you notice that your internal clock is much slower than real time,
-increase your increment. If it is moving much faster, decrease your increment. Keep in
-mind that this will change based on server load possibly, so do not worry about if it is
-off sometimes and on other times.
-
-Clock race conditions:
-We are not doing explicit guarding against race conditions. As your child processes are
-examining the clock, it is possible that the values they see will be slightly off
-sometimes. This should not be a problem, as the only result would be a clock value that
-was incorrect very briefly. This could cause the child process to possibly end early, but
-I will be able to see that as long as your child processes are outputting the clock.
-
-Signal Handling:
-In addition, I expect your program to terminate after no more than 60 REAL LIFE seconds.
-This can be done using a timeout signal, at which point it should kill all currently
-running child processes and terminate. It should also catch the ctrl-c signal, free up
-shared memory and then terminate all children.
-
-This can be implemented by having your code send a termination signal after 60 seconds.
+  This can be implemented by sending a termination signal after 60 seconds and handling cleanup using signals such as
+`SIGTERM`.
 
 API for Shared Memory Operations(shared.c):
         create_shared_memory(key_t key, size_t size) - Creates and returns a shared memory

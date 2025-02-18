@@ -11,8 +11,8 @@
 #define SHM_KEY 12345
 
 struct SysClock {
-  int sec;   // Seconds
-  int nano;  // Nanoseconds
+  int sec;
+  int nano;
 };
 
 int create_shared_memory( key_t key, size_t size );
