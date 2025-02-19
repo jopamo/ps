@@ -63,7 +63,7 @@ void start_clock_loop( struct SysClock *sys_clock ) {
     increment_clock( sys_clock, increment );
 
     // Output the clock value every second of simulated time
-    //if ( sys_clock->nano >= 100000000 ) {  // Every second of simulated time
+    // if ( sys_clock->nano >= 100000000 ) {  // Every second of simulated time
     //  printf( "OSS PID: %d SysClockS: %d SysClockNano: %d\n", getpid(), sys_clock->sec, sys_clock->nano );
     //}
 
