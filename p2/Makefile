@@ -8,6 +8,10 @@ else
   CFLAGS = -Wall -g -I./p2
 endif
 
+# Link libraries for POSIX semaphores
+# -pthread suffices on many modern systems; -lrt is needed on some older or specific environments.
+LDLIBS = -pthread -lrt
+
 OSS_SRC = oss.c clock.c
 WORKER_SRC = worker.c
 BOTH_SRC = shared.c
@@ -27,17 +31,17 @@ oss.o: oss.c
 clock.o: clock.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
-$(WORKER_OBJ): worker.c
-	$(CC) $(CFLAGS) -c $^ -o $@
+worker.o: worker.c
+	$(CC) $(CFLAGS) -c $< -o $@
 
-$(BOTH_OBJ): shared.c
+shared.o: shared.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
 $(OSS_EXE): $(OSS_OBJ) $(BOTH_OBJ)
-	$(CC) $(CFLAGS) -o $(OSS_EXE) $(OSS_OBJ) $(BOTH_OBJ)
+	$(CC) $(CFLAGS) -o $@ $(OSS_OBJ) $(BOTH_OBJ) $(LDLIBS)
 
 $(WORKER_EXE): $(WORKER_OBJ) $(BOTH_OBJ)
-	$(CC) $(CFLAGS) -o $(WORKER_EXE) $(WORKER_OBJ) $(BOTH_OBJ)
+	$(CC) $(CFLAGS) -o $@ $(WORKER_OBJ) $(BOTH_OBJ) $(LDLIBS)
 
 clean:
 	rm -f $(OSS_EXE) $(WORKER_EXE) *.o
