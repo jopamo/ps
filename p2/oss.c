@@ -84,8 +84,8 @@
 #define INITIAL_INCREMENT_NS    50000LL   // 0.05 ms
 #define FEEDBACK_CHECK_INTERVAL 500        // Check ratio every 500 loop iterations
 #define ADJUSTMENT_FACTOR       0.1        // Base factor for adjusting increments
-#define MIN_INCREMENT           1000LL     // 1µs minimum
-#define MAX_INCREMENT           500000LL   // 0.5ms maximum
+#define MIN_INCREMENT           5000LL
+#define MAX_INCREMENT           2000000LL // 2 ms
 
 // We'll also use a dead band around 1.0 speed to avoid small jitter
 #define DEAD_BAND_LOWER 0.95
