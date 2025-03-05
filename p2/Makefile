@@ -2,8 +2,7 @@ SHELL = /bin/bash
 
 ifneq ($(shell which clang 2>/dev/null),)
   CC = clang
-  CFLAGS = -Wall -Wextra -Werror -Wshadow -Wconversion -pedantic -O1 -g \
-           -fsanitize=address,undefined -fno-omit-frame-pointer -I./p2
+  CFLAGS = -Wall -Wextra -Werror -Wshadow -Wconversion -pedantic -O1 -g -fno-omit-frame-pointer -I./p2
 else
   CC = gcc
   CFLAGS = -Wall -g -I./p2

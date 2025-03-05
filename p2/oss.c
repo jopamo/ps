@@ -18,7 +18,7 @@
  *    - Each PCB contains:
  *      - `occupied` (0 or 1) to indicate if the entry is in use.
  *      - `pid` (process ID of the child).
- *      - `startSeconds` and `startNano` (time when the process was launched based on the system clock).
+ *      - `startSec` and `startNano` (time when the process was launched based on the system clock).
  *    - Limited size (suggested 20 entries).
  *    - Old entries are reused after processes terminate.
  *
@@ -34,35 +34,28 @@
  *    - Arguments:
  *      - -h: help
  *      - -n proc: number of worker processes to launch
- *      - -s simul: simulated time for each worker process
- *      - -t timelimitForChildren: upper bound of time for workers
- *      - -i intervalInMsToLaunchChildren: interval between worker launches
- *    - Initializes the system clock and launches workers up to the specified limit.
- *    - Updates the process table as processes are launched and terminated.
- *    - Increments the system clock, outputs the process table every half second.
- *    - Non-blocking `wait()` is used to check if child processes have terminated.
- *    - Must ensure the program runs for no more than 60 real seconds using a timeout signal.
+ *      - -s simul: concurrency limit (maximum processes running simultaneously)
+ *      - -t timelimit: how many simulated seconds a child can live
+ *      - -i intervalInMs: how many simulated ms between spawns
+ *    - Uses a busy loop to increment the simulated clock, printing status every 0.5s, respecting concurrency,
+ *      and checking for child termination non-blockingly.
+ *    - Kills all children and cleans up if 60 real seconds pass.
  *
  * 5. Termination:
  *    - After 60 real seconds, send a signal to terminate all running child processes.
  *    - Handle `SIGINT` (Ctrl-C) to clean up shared memory and terminate children.
  *
  * Notes:
- * - Do NOT use `sleep()` or `usleep()` for delays based on real time.
- * - The system clock does not have to match real time precisely, but should behave similarly.
- * - Handle clock race conditions by allowing minor discrepancies in worker termination.
- *
- * Signal handling and termination are critical for ensuring correct program behavior.
+ * - No `sleep()` or `usleep()` used for time delays.
+ * - The system clock can diverge from real time, but we try to keep it close by adapting the increment.
+ * - Minor discrepancies are acceptable for child termination timing.
  */
-
-// oss.c
 
 #include <errno.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/types.h>
 #include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
@@ -72,169 +65,362 @@
 
 #define MAX_PROCESSES 20
 
-// Process Control Block structure for process table
+// We'll stop after 60 real seconds
+#define REAL_TIME_LIMIT_SEC 60
+
+// Print the process table every 0.5 simulated seconds
+#define HALF_SECOND_NS 500000000LL
+
+/*
+ * ADAPTIVE TICK PARAMETERS:
+ * - We do a busy loop, each iteration incrementing our simulated clock by 'current_increment'.
+ * - Then, every FEEDBACK_CHECK_INTERVAL loops, we measure:
+ *       (sim_time_passed / real_time_passed)
+ *   If ratio>1 => sim is running faster => reduce increment
+ *   If ratio<1 => sim is slower => increase increment
+ */
+
+// Adjust these to taste:
+#define INITIAL_INCREMENT_NS    1000LL     // e.g. 1µs
+#define FEEDBACK_CHECK_INTERVAL 500        // Check ratio every 500 loop iterations
+#define ADJUSTMENT_FACTOR       0.1        // Base factor for adjusting increments
+#define MIN_INCREMENT           1000LL     // 1µs minimum
+#define MAX_INCREMENT           500000LL   // 0.5ms maximum
+
+// We'll also use a dead band around 1.0 speed to avoid small jitter
+#define DEAD_BAND_LOWER 0.95
+#define DEAD_BAND_UPPER 1.05
+
+// We can clamp single-step changes to e.g. ±25% of current increment
+#define MAX_SINGLE_STEP_RATIO 0.25
+
+/*
+ * SPIN_COUNT => how many dummy iterations to run each loop
+ * A higher SPIN_COUNT means the loop uses more CPU time per iteration,
+ * slowing down your program in *real* time without calling sleep().
+ */
+#define SPIN_COUNT 50000
+
+// PCB struct for each worker
 struct PCB {
-  int occupied;      // true or false
-  pid_t pid;         // process id
-  int startSeconds;  // start time in seconds
-  int startNano;     // start time in nanoseconds
+    int occupied;  // 1 = in use, 0 = free
+    pid_t pid;     // child's PID
+    int startSec;  // time (seconds) in the simulation when forked
+    int startNano; // time (nanoseconds) in the simulation when forked
 };
 
-struct PCB processTable[MAX_PROCESSES];  // Process Table
+static struct PCB processTable[MAX_PROCESSES];
 
-void spawn_workers( int num_workers, int simul, int timelimit, struct SysClock *sys_clock );
-void output_process_table( struct SysClock *sys_clock );
-void cleanup_and_exit( int signum );
-void handle_error( const char *msg );
+// We'll store the SysClock pointer after attaching shared memory
+static struct SysClock *sys_clock = NULL;
+// We'll store the shared memory ID
+static int shmid = -1;
 
-int main( int argc, char *argv[] ) {
-  // Check for sufficient command-line arguments
-  if ( argc < 9 ) {
-    fprintf( stderr, "Usage: %s -n proc -s simul -t timelimit -i interval\n", argv[0] );
-    return 1;
-  }
+// Command line args
+static int num_workers = 0;  // -n
+static int simul       = 0;  // -s
+static int timelimit   = 0;  // -t
+static int interval_ms = 0;  // -i
 
-  // Initialize command-line arguments
-  int num_workers = 0;
-  int simul       = 0;
-  int timelimit   = 0;
-  int interval_ms = 0;
+// How many total workers have been launched
+static int launched_count = 0;
 
-  // Parse command-line arguments
-  for ( int i = 1; i < argc; i++ ) {
-    if ( strcmp( argv[i], "-n" ) == 0 ) {
-      num_workers = atoi( argv[++i] );
-    } else if ( strcmp( argv[i], "-s" ) == 0 ) {
-      simul = atoi( argv[++i] );
-    } else if ( strcmp( argv[i], "-t" ) == 0 ) {
-      timelimit = atoi( argv[++i] );
-    } else if ( strcmp( argv[i], "-i" ) == 0 ) {
-      interval_ms = atoi( argv[++i] );
-    }
-  }
+// We'll track the real time at start to enforce the 60-second limit
+static struct timespec real_start;
 
-  // Initialize shared memory and semaphore system
-  init_shared_memory_system();
+// The "adaptive" increment
+static long long current_increment = INITIAL_INCREMENT_NS;
+static int iteration_count = 0; // loop iteration count
 
-  // Create and attach to the shared memory segment for SysClock
-  int shmid = create_shared_memory( SHM_KEY, sizeof( struct SysClock ) );
-  if ( shmid == -1 ) {
-    handle_error( "Failed to create shared memory segment" );
-  }
+// For measuring how sim time compares to real time
+static struct timespec feedback_real_start;
+static long long feedback_sim_start_ns = 0; // baseline sim time for feedback
 
-  struct SysClock *sys_clock = attach_shared_memory_rw( shmid );
-  if ( sys_clock == NULL ) {
-    handle_error( "Failed to attach to shared memory" );
-  }
+// Prototypes
+static void parse_args(int argc, char *argv[]);
+static void spawn_one_worker(void);
+static void handle_nonblocking_wait(void);
+static void print_process_table(void);
+static void kill_all_children(void);
+static void cleanup_and_exit(void);
 
-  // Initialize the clock (starts at 0)
-  initialize_clock( sys_clock );
+int main(int argc, char *argv[]) {
+    parse_args(argc, argv);
 
-  // Set up signal handler for cleanup (after timeout or Ctrl+C)
-  setup_signal_handlers();
+    // Clear out the process table
+    memset(processTable, 0, sizeof(processTable));
 
-  // Record start time to calculate elapsed real time
-  struct timespec start_time, current_time;
-  if ( clock_gettime( CLOCK_MONOTONIC, &start_time ) == -1 ) {
-    handle_error( "Failed to get start time" );
-  }
+    // 1) Initialize semaphore / shared memory system
+    init_shared_memory_system();
 
-  long long real_time_limit_ns = 60ULL * 1000000000ULL;  // 60 seconds real-time limit
-
-  // Track last time output was printed
-  long long last_output_time_ns = 0;  // Last time output was printed in nanoseconds
-
-  // Spawn worker processes based on simulated time
-  long long last_spawn_time_ns = 0;  // Track the time when the last worker was spawned
-
-  while ( 1 ) {
-    // Get current real time
-    if ( clock_gettime( CLOCK_MONOTONIC, &current_time ) == -1 ) {
-      handle_error( "Failed to get current time" );
+    // 2) Create & attach the SysClock
+    shmid = create_shared_memory(SHM_KEY, sizeof(struct SysClock));
+    sys_clock = (struct SysClock *)attach_shared_memory_rw(shmid);
+    if (!sys_clock) {
+        handle_error("Failed to attach shared memory (RW)");
     }
 
-    // Calculate the elapsed time in nanoseconds
-    long long elapsed_real_time_ns =
-      ( current_time.tv_sec - start_time.tv_sec ) * 1000000000LL + ( current_time.tv_nsec - start_time.tv_nsec );
+    // 3) Initialize the clock to zero
+    initialize_clock(sys_clock);
 
-    // Calculate the increment for simulated time based on the time unit and speed factor
-    long long increment = (long long)( TIME_UNIT * SPEED_FACTOR );  // Explicitly cast to long long
-
-    // Increment the system clock based on the updated simulated time
-    increment_clock( sys_clock, increment );
-
-    // Spawn workers when the simulated time exceeds the spawn interval
-    if ( sys_clock->sec * 1000000000LL + sys_clock->nano >= last_spawn_time_ns + interval_ms * 1000000LL ) {
-      spawn_workers( num_workers, simul, timelimit, sys_clock );
-      last_spawn_time_ns = sys_clock->sec * 1000000000LL + sys_clock->nano;  // Update last spawn time
+    // 4) Capture real start time for the 60s cutoff
+    if (clock_gettime(CLOCK_MONOTONIC, &real_start) == -1) {
+        perror("clock_gettime (start)");
+        cleanup_and_exit();
     }
 
-    // Output the process table every half second (500ms) of simulated time
-    long long current_time_ns = sys_clock->sec * 1000000000LL + sys_clock->nano;
-    if ( current_time_ns >= last_output_time_ns + 500000000LL ) {  // 500ms in nanoseconds
-      output_process_table( sys_clock );
-      last_output_time_ns = current_time_ns;  // Update last output time
-    }
+    // Initialize feedback baseline
+    feedback_real_start = real_start;
+    feedback_sim_start_ns = 0; // we just zeroed the clock
 
-    // Check for real-time expiration (60 real seconds)
-    if ( elapsed_real_time_ns >= real_time_limit_ns ) {
-      printf( "Real-time limit reached (60 seconds). Stopping simulated clock.\n" );
-      break;
-    }
-  }
+    long long last_print_ns = 0; // for printing table every 0.5s
+    long long last_spawn_ns = 0; // track last spawn time in sim ns
 
-  // Detach shared memory once done
-  detach_shared_memory( sys_clock );
+    // Main loop
+    while (1) {
+        // (A) Check if 60 real seconds have passed
+        struct timespec now;
+        if (clock_gettime(CLOCK_MONOTONIC, &now) == -1) {
+            perror("clock_gettime (loop)");
+            cleanup_and_exit();
+        }
+        long long elapsed_real_ns =
+            (long long)(now.tv_sec - real_start.tv_sec) * 1000000000LL +
+            (long long)(now.tv_nsec - real_start.tv_nsec);
 
-  // Clean up shared memory and semaphore system
-  cleanup_shared_memory_system();
-
-  return 0;
-}
-
-// Spawn worker processes
-void spawn_workers( int num_workers, int simul, int timelimit, struct SysClock *sys_clock ) {
-  for ( int i = 0; i < num_workers; i++ ) {
-    // Add the process to the table
-    for ( int j = 0; j < MAX_PROCESSES; j++ ) {
-      if ( !processTable[j].occupied ) {
-        processTable[j].occupied = 1;
-        processTable[j].pid      = fork();
-        if ( processTable[j].pid == -1 ) {
-          handle_error( "Failed to fork worker process" );
+        if (elapsed_real_ns >= (long long)REAL_TIME_LIMIT_SEC * 1000000000LL) {
+            printf("OSS: 60 real seconds elapsed. Stopping.\n");
+            break;
         }
 
-        if ( processTable[j].pid == 0 ) {  // Child process
-          // Prepare the arguments as strings
-          char simul_str[20], timelimit_str[20];
-          snprintf( simul_str, sizeof( simul_str ), "%d", simul );
-          snprintf( timelimit_str, sizeof( timelimit_str ), "%d", timelimit );
-
-          // Pass the arguments to the worker
-          if ( execlp( "./worker", "worker", simul_str, timelimit_str, (char *)NULL ) == -1 ) {
-            handle_error( "Failed to execute worker process" );
-          }
-          exit( 0 );  // If exec fails, exit child
+        // (B) ***Spin*** to slow down the loop in real time
+        for (volatile int i = 0; i < SPIN_COUNT; i++) {
+            // do nothing - purely burn CPU time
         }
 
-        processTable[j].startSeconds = sys_clock->sec;
-        processTable[j].startNano    = sys_clock->nano;
-        break;
-      }
+        // (C) Increment the simulated clock by current_increment
+        increment_clock(sys_clock, current_increment);
+
+        // (D) Check for finished children (non-blocking wait)
+        handle_nonblocking_wait();
+
+        // (E) Possibly spawn a new worker if concurrency & interval allow
+        if (launched_count < num_workers) {
+            // Count active
+            int active_count = 0;
+            for (int i = 0; i < MAX_PROCESSES; i++) {
+                if (processTable[i].occupied) active_count++;
+            }
+            if (active_count < simul) {
+                // If we've advanced enough sim time since last spawn
+                long long sim_now_ns =
+                    (long long)sys_clock->sec * 1000000000LL + sys_clock->nano;
+                if (sim_now_ns >= last_spawn_ns + (long long)interval_ms * 1000000LL) {
+                    spawn_one_worker();
+                    launched_count++;
+                    last_spawn_ns = sim_now_ns;
+                }
+            }
+        }
+
+        // (F) Print table every 0.5 sim seconds
+        long long current_sim_ns =
+            (long long)sys_clock->sec * 1000000000LL + sys_clock->nano;
+        if (current_sim_ns >= last_print_ns + HALF_SECOND_NS) {
+            print_process_table();
+            last_print_ns = current_sim_ns;
+        }
+
+        // (G) If all workers launched & none active => done
+        if (launched_count >= num_workers) {
+            int still_active = 0;
+            for (int i = 0; i < MAX_PROCESSES; i++) {
+                if (processTable[i].occupied) still_active++;
+            }
+            if (still_active == 0) {
+                printf("OSS: All workers finished.\n");
+                break;
+            }
+        }
+
+        // (H) Every FEEDBACK_CHECK_INTERVAL loops, measure ratio & adapt
+        iteration_count++;
+        if (iteration_count % FEEDBACK_CHECK_INTERVAL == 0) {
+            // measure real time since last feedback
+            struct timespec now_fb;
+            if (clock_gettime(CLOCK_MONOTONIC, &now_fb) == -1) {
+                perror("clock_gettime (feedback)");
+                cleanup_and_exit();
+            }
+            long long real_passed_ns =
+                (long long)(now_fb.tv_sec - feedback_real_start.tv_sec) * 1000000000LL +
+                (long long)(now_fb.tv_nsec - feedback_real_start.tv_nsec);
+
+            // measure how much simulated time advanced
+            long long sim_now_ns2 =
+                (long long)sys_clock->sec * 1000000000LL + sys_clock->nano;
+            long long sim_passed_ns = sim_now_ns2 - feedback_sim_start_ns;
+
+            double ratio = 0.0;
+            if (real_passed_ns > 0) {
+                ratio = (double)sim_passed_ns / (double)real_passed_ns;
+            }
+
+            // If ratio ~ 1 => no change
+            if (ratio < DEAD_BAND_LOWER || ratio > DEAD_BAND_UPPER) {
+                // out of dead band => let's adapt
+                double error = ratio - 1.0;
+
+                // 1) Compute how much to shift based on ADJUSTMENT_FACTOR and error
+                double dbl_product1 = (double)current_increment * ADJUSTMENT_FACTOR * error;
+                long long delta = (long long)dbl_product1;
+
+                // 2) clamp single-step changes to ±(25%) of current_increment
+                double dbl_product2 = (double)current_increment * MAX_SINGLE_STEP_RATIO;
+                long long maxChange = (long long)dbl_product2;
+
+                if (delta > maxChange) {
+                    delta = maxChange;
+                } else if (delta < -maxChange) {
+                    delta = -maxChange;
+                }
+
+                // 3) Apply
+                current_increment -= delta;
+
+                // 4) Bound the increment in [MIN_INCREMENT, MAX_INCREMENT]
+                if (current_increment < MIN_INCREMENT) {
+                    current_increment = MIN_INCREMENT;
+                } else if (current_increment > MAX_INCREMENT) {
+                    current_increment = MAX_INCREMENT;
+                }
+            }
+            // else do nothing if ratio is within the dead band
+
+            // reset feedback baseline
+            feedback_real_start = now_fb;
+            feedback_sim_start_ns = sim_now_ns2;
+        }
+
+        // busy loop => no other real sleeps
     }
-  }
+
+    // done => cleanup
+    cleanup_and_exit();
+    return 0;
 }
 
-// Output the current process table
-void output_process_table( struct SysClock *sys_clock ) {
-  printf( "OSS PID: %d SysClockS: %d SysClockNano: %d\n", getpid(), sys_clock->sec, sys_clock->nano );
-  printf( "Process Table:\n" );
-  printf( "Entry Occupied PID StartS StartN\n" );
-
-  for ( int i = 0; i < MAX_PROCESSES; i++ ) {
-    if ( processTable[i].occupied ) {
-      printf( "%d %d %d %d %d\n", i, processTable[i].occupied, processTable[i].pid, processTable[i].startSeconds,
-              processTable[i].startNano );
+// ------------------------------------------------------------------------
+static void parse_args(int argc, char *argv[]) {
+    if (argc < 9) {
+        fprintf(stderr, "Usage: %s -n <num_workers> -s <simul> -t <timelimit> -i <interval_ms>\n", argv[0]);
+        exit(1);
     }
-  }
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "-n") == 0) {
+            num_workers = atoi(argv[++i]);
+        } else if (strcmp(argv[i], "-s") == 0) {
+            simul = atoi(argv[++i]);
+        } else if (strcmp(argv[i], "-t") == 0) {
+            timelimit = atoi(argv[++i]);
+        } else if (strcmp(argv[i], "-i") == 0) {
+            interval_ms = atoi(argv[++i]);
+        } else if (strcmp(argv[i], "-h") == 0) {
+            printf("Usage: %s -n <num_workers> -s <simul> -t <timelimit> -i <interval_ms>\n", argv[0]);
+            exit(0);
+        }
+    }
+}
+
+// ------------------------------------------------------------------------
+static void spawn_one_worker(void) {
+    // find a free PCB
+    for (int i = 0; i < MAX_PROCESSES; i++) {
+        if (!processTable[i].occupied) {
+            processTable[i].occupied = 1;
+            processTable[i].startSec  = sys_clock->sec;
+            processTable[i].startNano = sys_clock->nano;
+
+            pid_t cpid = fork();
+            if (cpid < 0) {
+                perror("fork");
+                processTable[i].occupied = 0;
+                return;
+            }
+            if (cpid == 0) {
+                // Child
+                // We'll pass timelimit as <sec> plus 500000000 ns
+                char sec_str[32], ns_str[32];
+                snprintf(sec_str, sizeof(sec_str), "%d", timelimit);
+                snprintf(ns_str, sizeof(ns_str), "%d", 500000000);
+
+                execlp("./worker", "worker", sec_str, ns_str, (char *)NULL);
+                perror("execlp worker");
+                exit(1);
+            }
+            // parent
+            processTable[i].pid = cpid;
+            return;
+        }
+    }
+    fprintf(stderr, "OSS: No free slot in processTable.\n");
+}
+
+// ------------------------------------------------------------------------
+static void handle_nonblocking_wait(void) {
+    int status;
+    pid_t cpid;
+    while ((cpid = waitpid(-1, &status, WNOHANG)) > 0) {
+        // Mark that PCB slot free
+        for (int i = 0; i < MAX_PROCESSES; i++) {
+            if (processTable[i].occupied && processTable[i].pid == cpid) {
+                processTable[i].occupied = 0;
+                break;
+            }
+        }
+    }
+}
+
+// ------------------------------------------------------------------------
+static void print_process_table(void) {
+    printf("\nOSS: SysClock %d s, %d ns, incr=%lld\n",
+           sys_clock->sec, sys_clock->nano, current_increment);
+    printf("Process Table (PID / startSec / startNano):\n");
+    for (int i = 0; i < MAX_PROCESSES; i++) {
+        if (processTable[i].occupied) {
+            printf("  [%2d] pid=%d start=(%d, %d)\n",
+                   i,
+                   processTable[i].pid,
+                   processTable[i].startSec,
+                   processTable[i].startNano);
+        }
+    }
+    printf("\n");
+}
+
+// ------------------------------------------------------------------------
+static void kill_all_children(void) {
+    for (int i = 0; i < MAX_PROCESSES; i++) {
+        if (processTable[i].occupied) {
+            kill(processTable[i].pid, SIGTERM);
+        }
+    }
+    // Final reap
+    int status;
+    while (waitpid(-1, &status, WNOHANG) > 0) { }
+}
+
+// ------------------------------------------------------------------------
+static void cleanup_and_exit(void) {
+    kill_all_children();
+
+    if (sys_clock) {
+        detach_shared_memory((void *)sys_clock);
+    }
+    if (shmid != -1) {
+        cleanup_shared_memory(shmid);
+    }
+    cleanup_shared_memory_system();
+
+    exit(0);
 }

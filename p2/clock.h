@@ -3,12 +3,23 @@
 #ifndef CLOCK_H
 #define CLOCK_H
 
-#include "shared.h"
+/*
+ * Simulated clock structure plus function prototypes for incrementing
+ * and initializing. This clock is stored in shared memory and updated
+ * by the parent (oss). The children (worker) only read it.
+ */
 
-#define TIME_UNIT 100
-#define SPEED_FACTOR .5  // Speed factor (1 = normal, >1 = faster, <1 = slower)
+// Simple clock struct with seconds + nanoseconds
+struct SysClock {
+  int sec;   // Seconds
+  int nano;  // Nanoseconds
+};
 
-void increment_clock( struct SysClock *sys_clock, long long tick_interval );
+// Initializes the clock to zero
 void initialize_clock( struct SysClock *sys_clock );
 
-#endif  // CLOCK_H
+// Increments the clock by a specified amount (in nanoseconds),
+// carrying over to 'sec' if needed
+void increment_clock( struct SysClock *sys_clock, long long tick_interval );
+
+#endif

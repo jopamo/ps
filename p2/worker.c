@@ -60,73 +60,75 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/types.h>
-#include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
-
 #include "clock.h"
 #include "shared.h"
 
-int main( int argc, char *argv[] ) {
-  if ( argc != 3 ) {
-    fprintf( stderr, "Usage: %s <termination_time_sec> <termination_time_ns>\n", argv[0] );
-    exit( EXIT_FAILURE );
-  }
-
-  // Parse command-line arguments
-  int termination_time_sec = atoi( argv[1] );
-  int termination_time_ns  = atoi( argv[2] );
-
-  // Attach to shared memory (read-only) to access the simulated clock
-  init_shared_memory_system();
-  // Create and attach to the shared memory segment for SysClock
-  int shmid = create_shared_memory( SHM_KEY, sizeof( struct SysClock ) );
-  if ( shmid == -1 ) {
-    handle_error( "Failed to create shared memory segment" );
-  }
-  const struct SysClock *sys_clock = attach_shared_memory_ro( shmid );  // Attach to shared memory (read-only)
-
-  // Calculate target termination time
-  int current_sec = sys_clock->sec;
-  int current_ns  = sys_clock->nano;
-
-  // Compute the target termination time
-  int target_sec = current_sec + termination_time_sec;
-  int target_ns  = current_ns + termination_time_ns;
-
-  // Handle nanosecond overflow (if necessary)
-  if ( target_ns >= 1000000000 ) {
-    target_ns -= 1000000000;
-    target_sec += 1;
-  }
-
-  // Output the initial worker information
-  printf( "WORKER PID:%d PPID:%d SysClockS:%d SysClockNano:%d TermTimeS:%d TermTimeNano:%d\n", getpid(), getppid(),
-          sys_clock->sec, sys_clock->nano, target_sec, target_ns );
-  printf( "-- Just Starting\n" );
-
-  // Track the last second for periodic output
-  int last_sec = sys_clock->sec;
-
-  // Main loop: check the clock to determine when to terminate
-  while ( ( sys_clock->sec < target_sec ) || ( sys_clock->sec == target_sec && sys_clock->nano < target_ns ) ) {
-    // Periodic output based on clock changes
-    if ( sys_clock->sec > last_sec ) {
-      printf( "WORKER PID:%d PPID:%d SysClockS:%d SysClockNano:%d TermTimeS:%d TermTimeNano:%d\n", getpid(), getppid(),
-              sys_clock->sec, sys_clock->nano, target_sec, target_ns );
-      printf( "-- %d seconds have passed since starting\n", sys_clock->sec - last_sec );
-      last_sec = sys_clock->sec;
+int main(int argc, char *argv[]) {
+    if (argc != 3) {
+        fprintf(stderr, "Usage: worker <sec_to_live> <nano_to_live>\n");
+        return 1;
     }
-  }
 
-  // Output final message when termination time is reached
-  printf( "WORKER PID:%d PPID:%d SysClockS:%d SysClockNano:%d TermTimeS:%d TermTimeNano:%d\n", getpid(), getppid(),
-          sys_clock->sec, sys_clock->nano, target_sec, target_ns );
-  printf( "-- Terminating\n" );
+    // parse
+    int sec_to_live  = atoi(argv[1]);
+    int nano_to_live = atoi(argv[2]);
 
-  // Cleanup: Detach shared memory and clean up resources
-  detach_shared_memory( (void *)sys_clock );  // Cast to void* for detaching
-  cleanup_shared_memory_system();             // Cleanup shared memory system
+    // Setup shared memory system for the child as well (open semaphore)
+    init_shared_memory_system();
 
-  return 0;
+    // Attach to the existing SysClock in read-only mode
+    int shmid = create_shared_memory(SHM_KEY, sizeof(struct SysClock));
+    const struct SysClock *sys_clock =
+        (const struct SysClock *)attach_shared_memory_ro(shmid);
+    if (!sys_clock) {
+        perror("worker attach");
+        return 1;
+    }
+
+    // current time
+    int start_sec  = sys_clock->sec;
+    int start_nano = sys_clock->nano;
+
+    // compute target
+    int end_sec  = start_sec  + sec_to_live;
+    int end_nano = start_nano + nano_to_live;
+    while (end_nano >= 1000000000) {
+        end_nano -= 1000000000;
+        end_sec++;
+    }
+
+    // Print start message
+    printf("WORKER PID:%d Start: %d s, %d ns -> End: %d s, %d ns\n",
+           getpid(), start_sec, start_nano, end_sec, end_nano);
+
+    int last_reported_sec = start_sec;
+
+    // loop until time >= end_time
+    while (1) {
+        int current_s  = sys_clock->sec;
+        int current_ns = sys_clock->nano;
+
+        // if we've reached or passed the target time, break
+        if (current_s > end_sec ||
+            (current_s == end_sec && current_ns >= end_nano)) {
+            printf("WORKER PID:%d terminating at %d s, %d ns\n",
+                   getpid(), current_s, current_ns);
+            break;
+        }
+
+        // every time we cross a new second, output a quick message
+        if (current_s > last_reported_sec) {
+            printf("WORKER PID:%d alive for %d seconds\n",
+                   getpid(), (current_s - start_sec));
+            last_reported_sec = current_s;
+        }
+    }
+
+    // cleanup
+    detach_shared_memory((void *)sys_clock);
+    cleanup_shared_memory_system();
+
+    return 0;
 }
