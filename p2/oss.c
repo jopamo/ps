@@ -81,7 +81,7 @@
  */
 
 // Adjust these to taste:
-#define INITIAL_INCREMENT_NS    1000LL     // e.g. 1µs
+#define INITIAL_INCREMENT_NS    50000LL   // 0.05 ms
 #define FEEDBACK_CHECK_INTERVAL 500        // Check ratio every 500 loop iterations
 #define ADJUSTMENT_FACTOR       0.1        // Base factor for adjusting increments
 #define MIN_INCREMENT           1000LL     // 1µs minimum
@@ -99,7 +99,7 @@
  * A higher SPIN_COUNT means the loop uses more CPU time per iteration,
  * slowing down your program in *real* time without calling sleep().
  */
-#define SPIN_COUNT 50000
+#define SPIN_COUNT 5000
 
 // PCB struct for each worker
 struct PCB {
